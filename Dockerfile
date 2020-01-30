@@ -28,7 +28,9 @@
 #  - Follow platform guideline specified in https://github.com/docker-library/official-images
 # 
 
-FROM ubuntu:18.04
+FROM arm32v7/ubuntu:18.04
+
+COPY qemu-arm-static /usr/bin
 
 LABEL version="19.8"
 LABEL description="Docker container for Observium Community Edition"
@@ -49,37 +51,32 @@ ENV OBSERVIUM_DB_PASS=$OBSERVIUM_DB_PASS
 ENV OBSERVIUM_DB_NAME=$OBSERVIUM_DB_NAME
 
 # install prerequisites
-RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
-
-RUN apt-get update && \
-    apt install -y php-dev libmcrypt-dev php-pear && \
-    pecl channel-update pecl.php.net && \
-    pecl install mcrypt-1.0.1 && \
-    echo "extension=mcrypt.so" >> /etc/php/7.2/cli/php.ini
-
-RUN apt-get install -y libapache2-mod-php php-cli php-mysql php-mysqli \
-    php-gd php-json \
-    php-pear snmp fping mysql-client python-mysqldb rrdtool subversion \
-    whois mtr-tiny ipmitool graphviz imagemagick apache2
-
-RUN apt-get install -y libvirt-bin cron supervisor wget locales
-
-RUN apt purge -y php-dev && \
-    apt autoremove -y && \
-    apt-get clean
+RUN echo 'debconf debconf/frontend select Noninteractive' \
+    | debconf-set-selections && \
+    apt-get -q -y update && \
+    apt-get -q -y install software-properties-common && \
+    apt-add-repository universe && \
+    apt-add-repository multiverse && \
+    apt-get -q -y install libapache2-mod-php7.2 php7.2-cli php7.2-mysql \
+        php7.2-mysqli php7.2-gd php7.2-json php-pear snmp fping \
+        mysql-client python-mysqldb rrdtool subversion whois mtr-tiny \
+        ipmitool graphviz imagemagick apache2 locales wget && \
+    apt-get -q autoremove -y && \
+    apt-get -q clean
 
 # set locale
 RUN locale-gen en_US.utf8
 
 # install observium package
-RUN mkdir -p /opt/observium /opt/observium/lock /opt/observium/logs /opt/observium/rrd
-RUN cd /opt && \
-    wget http://www.observium.org/observium-community-latest.tar.gz && \
+RUN mkdir -p /opt/observium /opt/observium/lock \
+        /opt/observium/logs /opt/observium/rrd && \
+    cd /opt && \
+    wget -q http://www.observium.org/observium-community-latest.tar.gz && \
     tar zxvf observium-community-latest.tar.gz && \
     rm observium-community-latest.tar.gz
 
 # check version
-RUN [ -f /opt/observium/VERSION ] && cat /opt/observium/VERSION
+#RUN [ -f /opt/observium/VERSION ] && cat /opt/observium/VERSION
 
 # configure observium package
 RUN cd /opt/observium && \
@@ -91,10 +88,9 @@ RUN cd /opt/observium && \
     echo "\$config['base_url'] = getenv('OBSERVIUM_BASE_URL');" >> config.php
 
 COPY observium-init /opt/observium/observium-init.sh
-RUN chmod a+x /opt/observium/observium-init.sh
+RUN chmod a+x /opt/observium/observium-init.sh && \
+    chown -R www-data:www-data /opt/observium
 
-RUN chown -R www-data:www-data /opt/observium
-RUN find /opt -ls
 #RUN cd /opt/observium && \
 #    ./discovery.php -u && \
 #    ./adduser.php $OBSERVIUM_ADMIN_USER $OBSERVIUM_ADMIN_PASS 10
@@ -109,8 +105,9 @@ RUN a2dismod mpm_event && \
     a2enmod rewrite
 
 #configure timezone
-RUN echo "US/Eastern" > /etc/timezone && \
-    dpkg-reconfigure -f noninteractive tzdata && \
+ENV TZ=US/Eastern
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone && \
     rm -rf /usr/share/man/*
 
 # configure apache configuration
