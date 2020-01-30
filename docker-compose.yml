@@ -1,5 +1,4 @@
 # Observium and MariaDB container
-# Maintained by somsakc@hotmail.com
 
 version: '3'
 

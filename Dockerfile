@@ -30,7 +30,6 @@
 
 FROM ubuntu:18.04
 
-LABEL maintainer "somsakc@hotmail.com"
 LABEL version="19.8"
 LABEL description="Docker container for Observium Community Edition"
 
