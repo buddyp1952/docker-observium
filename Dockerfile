@@ -45,6 +45,7 @@ ARG OBSERVIUM_DB_NAME=observium
 # set environment variables
 ENV LANG en_US.utf8
 ENV LANGUAGE en_US.utf8
+ENV TZ=US/Eastern
 ENV OBSERVIUM_DB_HOST=$OBSERVIUM_DB_HOST
 ENV OBSERVIUM_DB_USER=$OBSERVIUM_DB_USER
 ENV OBSERVIUM_DB_PASS=$OBSERVIUM_DB_PASS
@@ -52,75 +53,61 @@ ENV OBSERVIUM_DB_NAME=$OBSERVIUM_DB_NAME
 
 # install prerequisites
 RUN echo 'debconf debconf/frontend select Noninteractive' \
-    | debconf-set-selections && \
-    apt-get -q -y update && \
-    apt-get -q -y install software-properties-common && \
-    apt-add-repository universe && \
-    apt-add-repository multiverse && \
-    apt-get -q -y install libapache2-mod-php7.2 php7.2-cli php7.2-mysql \
-        php7.2-mysqli php7.2-gd php7.2-json php-pear snmp fping \
-        mysql-client python-mysqldb rrdtool subversion whois mtr-tiny \
-        ipmitool graphviz imagemagick apache2 locales wget && \
-    apt-get -q autoremove -y && \
-    apt-get -q clean
-
-# set locale
-RUN locale-gen en_US.utf8
+    | debconf-set-selections \
+    && apt-get -qq -y update \
+    && apt-get -qq -y install software-properties-common \
+    && apt-add-repository universe \
+    && apt-add-repository multiverse \
+    && apt-get -qq -y install libapache2-mod-php7.2 php7.2-cli php7.2-mysql \
+           php7.2-mysqli php7.2-gd php7.2-json php-pear snmp fping \
+           mysql-client python-mysqldb rrdtool subversion whois mtr-tiny \
+           ipmitool graphviz imagemagick apache2 locales wget \
+    && apt-get -qq autoremove --purge -y \
+    && apt-get -qq clean \
+    && apt-get -qq autoclean \
+    && locale-gen en_US.utf8
 
 # install observium package
 RUN mkdir -p /opt/observium /opt/observium/lock \
-        /opt/observium/logs /opt/observium/rrd && \
-    cd /opt && \
-    wget -q http://www.observium.org/observium-community-latest.tar.gz && \
-    tar zxvf observium-community-latest.tar.gz && \
-    rm observium-community-latest.tar.gz
+           /opt/observium/logs /opt/observium/rrd \
+    && cd /opt \
+    && wget -q http://www.observium.org/observium-community-latest.tar.gz \
+    && tar zxvf observium-community-latest.tar.gz \
+    && rm observium-community-latest.tar.gz \
+    && cd /opt/observium \
+    && cp config.php.default config.php \
+    && sed -i -e "s/= 'localhost';/= getenv('OBSERVIUM_DB_HOST');/g" config.php \
+    && sed -i -e "s/= 'USERNAME';/= getenv('OBSERVIUM_DB_USER');/g" config.php \
+    && sed -i -e "s/= 'PASSWORD';/= getenv('OBSERVIUM_DB_PASS');/g" config.php \
+    && sed -i -e "s/= 'observium';/= getenv('OBSERVIUM_DB_NAME');/g" config.php \
+    && echo "\$config['base_url'] = getenv('OBSERVIUM_BASE_URL');" >> config.php
 
-# check version
-#RUN [ -f /opt/observium/VERSION ] && cat /opt/observium/VERSION
-
-# configure observium package
-RUN cd /opt/observium && \
-    cp config.php.default config.php && \
-    sed -i -e "s/= 'localhost';/= getenv('OBSERVIUM_DB_HOST');/g" config.php && \
-    sed -i -e "s/= 'USERNAME';/= getenv('OBSERVIUM_DB_USER');/g" config.php && \
-    sed -i -e "s/= 'PASSWORD';/= getenv('OBSERVIUM_DB_PASS');/g" config.php && \
-    sed -i -e "s/= 'observium';/= getenv('OBSERVIUM_DB_NAME');/g" config.php && \
-    echo "\$config['base_url'] = getenv('OBSERVIUM_BASE_URL');" >> config.php
-
+# Fix permissions
+# && configure php modules
+# && configure timezone
+# && apache configuration
+# && configure observium cron job
 COPY observium-init /opt/observium/observium-init.sh
-RUN chmod a+x /opt/observium/observium-init.sh && \
-    chown -R www-data:www-data /opt/observium
-
-#RUN cd /opt/observium && \
-#    ./discovery.php -u && \
-#    ./adduser.php $OBSERVIUM_ADMIN_USER $OBSERVIUM_ADMIN_PASS 10
-
-# configure php modules
-RUN phpenmod mcrypt
-
-# configure apache modules
-RUN a2dismod mpm_event && \
-    a2enmod mpm_prefork && \
-    a2enmod php7.2 && \
-    a2enmod rewrite
-
-#configure timezone
-ENV TZ=US/Eastern
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
-    echo $TZ > /etc/timezone && \
-    rm -rf /usr/share/man/*
-
-# configure apache configuration
-#RUN mv /etc/apache2/sites-available/000-default.conf /etc/apache2/sites-available/000-default.conf.orig
 COPY observium-apache24 /etc/apache2/sites-available/000-default.conf
-RUN rm -fr /var/www
-
-# configure observium cron job
-#COPY observium-cron /etc/cron.d/observium
 COPY observium-cron /tmp/observium
-RUN echo "" >> /etc/crontab && \
-    cat /tmp/observium >> /etc/crontab && \
-    rm -f /tmp/observium
+RUN chmod a+x /opt/observium/observium-init.sh \
+    && chown -R www-data:www-data /opt/observium \
+    && phpenmod mcrypt \
+    && a2dismod mpm_event \
+    && a2enmod mpm_prefork \
+    && a2enmod php7.2 \
+    && a2enmod rewrite \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
+    && rm -rf /usr/share/man/* \
+    && rm -fr /var/www \
+    && echo "" >> /etc/crontab \
+    && cat /tmp/observium >> /etc/crontab \
+    && rm -f /tmp/observium
+
+#RUN cd /opt/observium \
+#    ./discovery.php -u \
+#    ./adduser.php $OBSERVIUM_ADMIN_USER $OBSERVIUM_ADMIN_PASS 10
 
 # configure container interfaces
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
@@ -130,3 +117,4 @@ EXPOSE 80/tcp
 
 VOLUME ["/opt/observium/lock", "/opt/observium/logs","/opt/observium/rrd"]
 
+RUN rm /usr/bin/qemu-arm-static
