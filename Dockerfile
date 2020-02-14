@@ -52,7 +52,8 @@ ENV OBSERVIUM_DB_PASS=$OBSERVIUM_DB_PASS
 ENV OBSERVIUM_DB_NAME=$OBSERVIUM_DB_NAME
 
 # install prerequisites
-RUN echo 'debconf debconf/frontend select Noninteractive' \
+RUN set -ex \
+    && echo 'debconf debconf/frontend select Noninteractive' \
     | debconf-set-selections \
     && apt-get -qq -y update \
     && apt-get -qq -y install software-properties-common \
@@ -68,7 +69,8 @@ RUN echo 'debconf debconf/frontend select Noninteractive' \
     && locale-gen en_US.utf8
 
 # install observium package
-RUN mkdir -p /opt/observium /opt/observium/lock \
+RUN set -ex \
+    && mkdir -p /opt/observium /opt/observium/lock \
            /opt/observium/logs /opt/observium/rrd \
     && cd /opt \
     && wget -q http://www.observium.org/observium-community-latest.tar.gz \
@@ -90,7 +92,8 @@ RUN mkdir -p /opt/observium /opt/observium/lock \
 COPY observium-init /opt/observium/observium-init.sh
 COPY observium-apache24 /etc/apache2/sites-available/000-default.conf
 COPY observium-cron /tmp/observium
-RUN chmod a+x /opt/observium/observium-init.sh \
+RUN set -ex \
+    && chmod a+x /opt/observium/observium-init.sh \
     && chown -R www-data:www-data /opt/observium \
     && phpenmod mcrypt \
     && a2dismod mpm_event \
